@@ -2,6 +2,7 @@
  * Gemini Client
  * =============
  * Wrapper for Google Gemini API using LangChain.
+ * Uses gemini-2.5-flash for lower cost and better performance.
  */
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
@@ -16,10 +17,10 @@ export function getGemini(): ChatGoogleGenerativeAI {
     }
     
     geminiInstance = new ChatGoogleGenerativeAI({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
       apiKey,
       temperature: 0.7,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
     });
   }
   return geminiInstance;
@@ -59,7 +60,6 @@ export async function generateJSON<T>(prompt: string): Promise<T> {
 
 /**
  * Lazy model proxy for modules that import `geminiModel` directly.
- * Used by reporter.ts and evolution.ts.
  */
 export const geminiModel = {
   invoke: (prompt: string) => getGemini().invoke(prompt),

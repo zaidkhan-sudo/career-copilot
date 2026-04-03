@@ -120,8 +120,9 @@ export async function POST(request: NextRequest) {
       // Handle PDF files
       if (file.type === "application/pdf") {
         const buffer = Buffer.from(await file.arrayBuffer());
-        // Dynamic import to avoid issues with pdf-parse in edge
-        const pdfParse = (await import("pdf-parse")).default;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pdfModule = await import("pdf-parse") as any;
+        const pdfParse = pdfModule.default || pdfModule;
         const pdfData = await pdfParse(buffer);
         text = pdfData.text;
       } else {

@@ -1,269 +1,310 @@
 "use client";
 
+/**
+ * Resumes Page — Enhanced
+ * ========================
+ * Displays all saved resumes with preview, download, and copy.
+ */
+
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import {
   FileText,
-  Plus,
-  Loader2,
-  CheckCircle2,
-  Clock,
-  PenTool,
-  Trash2,
   Download,
-  Eye,
-  ChevronRight,
+  Copy,
+  Check,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
   Sparkles,
-  ArrowRight,
+  Calendar,
+  Briefcase,
+  Loader2,
+  Search,
+  Target,
+  Eye,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { useStore, useStoreActions } from "@/lib/store";
 import Link from "next/link";
+import { useStore } from "@/lib/store";
 
 export default function ResumesPage() {
-  const searchParams = useSearchParams();
   const { state } = useStore();
-  const { setResumes, addResume } = useStoreActions();
-  const [generating, setGenerating] = useState(false);
-  const [showGenerator, setShowGenerator] = useState(false);
-  const [genForm, setGenForm] = useState({
-    jobTitle: searchParams.get("jobTitle") || "",
-    jobCompany: searchParams.get("jobCompany") || "",
-    jobId: searchParams.get("jobId") || "",
-    jobDescription: "",
+  const [resumes, setResumes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Load saved resumes
+  useEffect(() => {
+    const loadResumes = async () => {
+      try {
+        const res = await fetch("/api/resumes");
+        const data = await res.json();
+        if (data.data?.length) {
+          setResumes(
+            data.data.map((r: any) => ({
+              id: r.id,
+              job_title: r.job_title || r.jobTitle || "",
+              job_company: r.job_company || r.jobCompany || "",
+              framing_strategy: r.framing_strategy || r.framingStrategy || "",
+              content: r.content || "",
+              created_at: r.created_at || r.createdAt || new Date().toISOString(),
+            }))
+          );
+        } else {
+          // Use store resumes as fallback
+          setResumes(
+            state.resumes.map((r: any) => ({
+              id: r.id,
+              job_title: r.targetRole || r.jobTitle || r.job_title,
+              job_company: r.company || r.jobCompany || r.job_company,
+              framing_strategy: r.framingStrategy || r.framing_strategy,
+              content: r.content || "",
+              created_at: r.createdAt || r.created_at || new Date().toISOString(),
+            }))
+          );
+        }
+      } catch {
+        setResumes(
+          state.resumes.map((r: any) => ({
+            id: r.id,
+            job_title: r.targetRole || r.jobTitle || r.job_title,
+            job_company: r.company || r.jobCompany || r.job_company,
+            framing_strategy: r.framingStrategy || r.framing_strategy,
+            content: r.content || "",
+            created_at: r.createdAt || r.created_at || new Date().toISOString(),
+          }))
+        );
+      }
+      setLoading(false);
+    };
+    loadResumes();
+  }, [state.resumes]);
+
+  const handleCopy = (id: string, content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleDownload = (resume: any) => {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const content = resume.content || "";
+    win.document.write(`
+      <html>
+      <head>
+        <title>Resume - ${resume.job_title} - ${resume.job_company}</title>
+        <style>
+          body { font-family: 'Georgia', serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #1a1a1a; }
+          h1 { font-size: 28px; border-bottom: 2px solid #333; padding-bottom: 8px; }
+          h2 { font-size: 20px; color: #333; margin-top: 24px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+          h3 { font-size: 16px; margin-top: 16px; }
+          ul { padding-left: 20px; } li { margin-bottom: 6px; }
+          hr { border: 1px solid #ddd; margin: 24px 0; }
+          @media print { body { margin: 0; padding: 20px; } }
+        </style>
+      </head>
+      <body>${content
+        .replace(/^# (.+)/gm, "<h1>$1</h1>")
+        .replace(/^## (.+)/gm, "<h2>$1</h2>")
+        .replace(/^### (.+)/gm, "<h3>$1</h3>")
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>")
+        .replace(/^- (.+)/gm, "<li>$1</li>")
+        .replace(/^---$/gm, "<hr>")
+        .replace(/\n\n/g, "<br><br>")
+        .replace(/\n/g, "<br>")
+      }</body>
+      </html>
+    `);
+    win.document.close();
+    win.print();
+  };
+
+  const filtered = resumes.filter((r) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (r.job_title || "").toLowerCase().includes(q) ||
+      (r.job_company || "").toLowerCase().includes(q) ||
+      (r.framing_strategy || "").toLowerCase().includes(q)
+    );
   });
 
-  // Open generator if we came from dashboard with params
-  useEffect(() => {
-    if (searchParams.get("jobTitle")) {
-      setShowGenerator(true);
-      // Try to find job description from store
-      const jobId = searchParams.get("jobId");
-      if (jobId) {
-        const job = state.jobs.find((j) => j.id === jobId);
-        if (job) {
-          setGenForm((f) => ({ ...f, jobDescription: job.description || "" }));
-        }
-      }
-    }
-  }, [searchParams]);
-
-  // Fetch resumes
-  useEffect(() => {
-    async function load() {
-      const res = await fetch("/api/resumes");
-      const { data } = await res.json();
-      if (data?.length) setResumes(data);
-    }
-    if (state.resumes.length === 0) load();
-  }, []);
-
-  const handleGenerate = async () => {
-    if (!genForm.jobTitle || !genForm.jobDescription) return;
-    setGenerating(true);
-
-    try {
-      const res = await fetch("/api/agents/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId: genForm.jobId,
-          jobTitle: genForm.jobTitle,
-          jobCompany: genForm.jobCompany,
-          jobDescription: genForm.jobDescription,
-        }),
-      });
-
-      const { data } = await res.json();
-      if (data) {
-        addResume({
-          id: data.id,
-          jobId: data.job_id || genForm.jobId,
-          jobTitle: genForm.jobTitle,
-          jobCompany: genForm.jobCompany,
-          framingStrategy: data.framing_strategy || "general",
-          content: data.content || "",
-          coverLetter: data.cover_letter || "",
-          status: "draft",
-          callbackCount: 0,
-          totalSent: 0,
-          createdAt: new Date().toISOString(),
-        });
-        setShowGenerator(false);
-        setGenForm({ jobTitle: "", jobCompany: "", jobId: "", jobDescription: "" });
-      }
-    } catch (error) {
-      console.error("Resume generation failed:", error);
-    }
-    setGenerating(false);
-  };
-
-  const statusBadge = (status: string) => {
-    const map: Record<string, { color: string; icon: any; label: string }> = {
-      draft: { color: "amber", icon: PenTool, label: "Draft" },
-      ready: { color: "emerald", icon: CheckCircle2, label: "Ready" },
-      applied: { color: "indigo", icon: CheckCircle2, label: "Applied" },
-    };
-    const info = map[status] || map.draft;
-    return (
-      <span className={`inline-flex items-center gap-1 rounded-full bg-[var(--color-${info.color}-bg)] px-2 py-0.5 text-[10px] font-bold text-[var(--color-${info.color})]`}>
-        <info.icon className="h-2.5 w-2.5" /> {info.label}
-      </span>
-    );
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Resumes</h1>
-          <p className="text-sm text-[var(--color-text-secondary)]">AI-generated, tailored for each opportunity</p>
-        </div>
-        <button
-          onClick={() => setShowGenerator(!showGenerator)}
-          className="flex items-center gap-2 rounded-xl bg-[var(--color-indigo)] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[var(--color-indigo-hover)]"
-        >
-          <Plus className="h-4 w-4" /> Generate New
-        </button>
-      </div>
-
-      {/* Generator Panel */}
-      {showGenerator && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-6 border-2 border-[var(--color-indigo-border)]"
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="h-5 w-5 text-[var(--color-indigo)]" />
-            <h3 className="text-base font-semibold text-[var(--color-text-primary)]">Generate Tailored Resume</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Job Title *</label>
-              <input
-                value={genForm.jobTitle}
-                onChange={(e) => setGenForm({ ...genForm, jobTitle: e.target.value })}
-                className="w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-card)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-indigo)]"
-                placeholder="e.g. Senior Frontend Engineer"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Company</label>
-              <input
-                value={genForm.jobCompany}
-                onChange={(e) => setGenForm({ ...genForm, jobCompany: e.target.value })}
-                className="w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-card)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-indigo)]"
-                placeholder="e.g. Stripe"
-              />
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Job Description *</label>
-            <textarea
-              value={genForm.jobDescription}
-              onChange={(e) => setGenForm({ ...genForm, jobDescription: e.target.value })}
-              rows={4}
-              className="w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-card)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-indigo)] resize-none"
-              placeholder="Paste the job description here..."
-            />
-          </div>
-
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={handleGenerate}
-              disabled={generating || !genForm.jobTitle || !genForm.jobDescription}
-              className="flex items-center gap-2 rounded-lg bg-[var(--color-indigo)] px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-[var(--color-indigo-hover)] disabled:opacity-50"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" /> Generate Resume & Cover Letter
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => setShowGenerator(false)}
-              className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-            >
-              Cancel
-            </button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Resume List */}
-      {state.resumes.length === 0 ? (
-        <div className="glass-card p-12 text-center">
-          <FileText className="mx-auto h-12 w-12 text-[var(--color-text-muted)] mb-4" />
-          <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">No resumes yet</h3>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Generate a tailored resume by clicking &ldquo;Generate New&rdquo; above
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
+            <FileText className="inline h-6 w-6 mr-2" />
+            My Resumes
+          </h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">
+            {resumes.length} tailored resume{resumes.length !== 1 ? "s" : ""} generated
           </p>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {state.resumes.map((resume, i) => (
-            <motion.div
-              key={resume.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="glass-card p-5 group hover:shadow-lg transition-all"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                    {resume.jobTitle || "General Resume"}
-                  </h3>
-                  <p className="text-xs text-[var(--color-text-secondary)]">
-                    {resume.jobCompany || "Various companies"}
-                  </p>
-                </div>
-                {statusBadge(resume.status)}
-              </div>
+        <Link href="/jobs">
+          <button className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[var(--color-emerald)] to-[var(--color-cyan)] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg">
+            <Sparkles className="h-4 w-4" /> New Resume
+          </button>
+        </Link>
+      </div>
 
-              <p className="text-xs text-[var(--color-text-muted)] mb-2">
-                Strategy: <span className="text-[var(--color-text-secondary)]">{resume.framingStrategy || "—"}</span>
-              </p>
-
-              {/* Content Preview */}
-              <div className="rounded-lg bg-[var(--color-bg-card)] p-3 mb-3 max-h-24 overflow-hidden relative">
-                <p className="text-[11px] text-[var(--color-text-muted)] whitespace-pre-line leading-relaxed">
-                  {(resume.content || "No content generated yet.").slice(0, 300)}...
-                </p>
-                <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-[var(--color-bg-card)] to-transparent" />
-              </div>
-
-              {/* Stats & Actions */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-[10px] text-[var(--color-text-muted)]">
-                  <span>{new Date(resume.createdAt).toLocaleDateString()}</span>
-                  {resume.totalSent > 0 && (
-                    <span>Sent: {resume.totalSent}</span>
-                  )}
-                  {resume.callbackCount > 0 && (
-                    <span className="text-[var(--color-emerald)]">
-                      Callbacks: {resume.callbackCount}
-                    </span>
-                  )}
-                </div>
-                <Link href={`/resumes/${resume.id}`}>
-                  <button className="flex items-center gap-1 text-xs text-[var(--color-indigo)] hover:underline">
-                    <Eye className="h-3 w-3" /> Edit
-                    <ArrowRight className="h-3 w-3" />
-                  </button>
-                </Link>
-              </div>
-            </motion.div>
-          ))}
+      {/* Search */}
+      {resumes.length > 0 && (
+        <div className="relative mb-6">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-text-muted)]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search resumes..."
+            className="w-full rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-card)] pl-11 pr-4 py-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-emerald)] focus:outline-none transition-colors"
+          />
         </div>
+      )}
+
+      {/* Content */}
+      {loading ? (
+        <div className="glass-card p-16 text-center">
+          <Loader2 className="mx-auto h-10 w-10 animate-spin text-[var(--color-emerald)] mb-4" />
+          <p className="text-sm text-[var(--color-text-muted)]">Loading resumes...</p>
+        </div>
+      ) : filtered.length === 0 && resumes.length === 0 ? (
+        <div className="glass-card p-12 text-center">
+          <FileText className="mx-auto h-12 w-12 text-[var(--color-text-muted)] mb-4" />
+          <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
+            No resumes yet
+          </h3>
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+            Go to the Jobs page and click &quot;Create Resume&quot; on a job card to generate a tailored resume.
+          </p>
+          <Link href="/jobs">
+            <button className="mt-4 rounded-xl bg-[var(--color-emerald)] px-5 py-2.5 text-sm font-semibold text-white">
+              Browse Jobs
+            </button>
+          </Link>
+        </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="space-y-4"
+        >
+          {filtered.map((resume, i) => {
+            const expanded = expandedId === resume.id;
+
+            return (
+              <motion.div
+                key={resume.id || i}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="glass-card overflow-hidden transition-all hover:border-[var(--color-border-hover)]"
+              >
+                {/* Gradient top */}
+                <div className="h-0.5 bg-gradient-to-r from-[var(--color-emerald)] to-[var(--color-cyan)]" />
+
+                <div className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="rounded-full bg-[var(--color-emerald-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-emerald)]">
+                          {resume.framing_strategy || "Tailored"}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-[var(--color-text-primary)]">
+                        <Briefcase className="inline h-3.5 w-3.5 mr-1.5" />
+                        {resume.job_title || "Resume"}
+                      </h3>
+                      <p className="text-sm text-[var(--color-text-secondary)]">
+                        {resume.job_company || "Company"}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+                        <Calendar className="h-2.5 w-2.5" />
+                        {resume.created_at
+                          ? new Date(
+                              typeof resume.created_at === "object"
+                                ? (resume.created_at as any)._seconds * 1000
+                                : resume.created_at
+                            ).toLocaleDateString()
+                          : "Recently"}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleCopy(resume.id, resume.content || "")}
+                        className="rounded-lg p-2 transition-colors hover:bg-[var(--color-bg-card)]"
+                        title="Copy"
+                      >
+                        {copiedId === resume.id ? (
+                          <Check className="h-4 w-4 text-[var(--color-emerald)]" />
+                        ) : (
+                          <Copy className="h-4 w-4 text-[var(--color-text-muted)]" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDownload(resume)}
+                        className="rounded-lg p-2 transition-colors hover:bg-[var(--color-bg-card)]"
+                        title="Print/PDF"
+                      >
+                        <Download className="h-4 w-4 text-[var(--color-text-muted)]" />
+                      </button>
+                      <button
+                        onClick={() => setExpandedId(expanded ? null : resume.id)}
+                        className="rounded-lg p-2 transition-colors hover:bg-[var(--color-bg-card)]"
+                        title={expanded ? "Collapse" : "Expand"}
+                      >
+                        {expanded ? (
+                          <ChevronUp className="h-4 w-4 text-[var(--color-text-muted)]" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-[var(--color-text-muted)]" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  {!expanded && resume.content && (
+                    <p className="mt-3 text-xs text-[var(--color-text-muted)] line-clamp-3 leading-relaxed">
+                      {resume.content.slice(0, 300)}...
+                    </p>
+                  )}
+
+                  {/* Full content */}
+                  {expanded && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="mt-4 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-input)] p-5 max-h-96 overflow-y-auto"
+                    >
+                      <pre className="whitespace-pre-wrap text-xs text-[var(--color-text-secondary)] font-mono leading-relaxed">
+                        {resume.content}
+                      </pre>
+                    </motion.div>
+                  )}
+
+                  {/* Interview prep link */}
+                  {resume.job_title && resume.job_company && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)] flex items-center gap-2">
+                      <Link
+                        href={`/interview?jobTitle=${encodeURIComponent(resume.job_title)}&jobCompany=${encodeURIComponent(resume.job_company)}`}
+                      >
+                        <span className="flex items-center gap-1 rounded-lg bg-[var(--color-indigo-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--color-indigo)] hover:bg-[var(--color-indigo)]/20 transition-colors">
+                          <Target className="h-2.5 w-2.5" /> Interview Prep
+                        </span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })}
+        </motion.div>
       )}
     </div>
   );

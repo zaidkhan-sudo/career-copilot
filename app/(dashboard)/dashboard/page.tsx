@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Dashboard Page — Enhanced
+ * ==========================
+ * Main command center with source distribution, activity,
+ * top matches, quick actions, and cron status.
+ */
+
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import {
@@ -8,26 +15,254 @@ import {
   Briefcase,
   FileText,
   Target,
-  Clock,
   ChevronRight,
   Zap,
   RefreshCw,
   Loader2,
-  ExternalLink,
   MapPin,
   ArrowRight,
   Brain,
   AlertTriangle,
-  CheckCircle2,
   Rocket,
   BarChart3,
   Star,
+  Mail,
+  Clock,
+  Play,
+  CheckCircle2,
+  Timer,
+  Globe,
+  Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { useStore, useStoreActions } from "@/lib/store";
+import ComposeMailModal from "@/components/ui/compose-mail-modal";
+import ResumeBuilderModal from "@/components/ui/resume-builder-modal";
 
 // ============================================
-// Morning Briefing Component
+// Source Distribution Mini Chart
+// ============================================
+
+const SOURCE_COLORS: Record<string, string> = {
+  Adzuna: "#22d3ee",
+  JSearch: "#818cf8",
+  "The Muse": "#f472b6",
+  Freelancer: "#fb923c",
+  Remotive: "#a78bfa",
+  Arbeitnow: "#34d399",
+  "HN Who's Hiring": "#fbbf24",
+  Agent: "#6ee7b7",
+};
+
+function SourceDistribution() {
+  const { state } = useStore();
+
+  const distribution = state.jobs.reduce((acc, job) => {
+    const src = job.source || "Other";
+    acc[src] = (acc[src] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const entries = Object.entries(distribution).sort((a, b) => b[1] - a[1]);
+  const total = state.jobs.length;
+
+  if (total === 0) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2, duration: 0.4 }}
+      className="glass-card p-5"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Globe className="h-4 w-4 text-[var(--color-cyan)]" />
+        <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Job Sources</h3>
+        <span className="ml-auto text-xs text-[var(--color-text-muted)]">{total} total</span>
+      </div>
+
+      {/* Bar */}
+      <div className="flex h-3 rounded-full overflow-hidden mb-3">
+        {entries.map(([source, count]) => (
+          <div
+            key={source}
+            className="transition-all"
+            style={{
+              width: `${(count / total) * 100}%`,
+              background: SOURCE_COLORS[source] || "#6b7280",
+              minWidth: "4px",
+            }}
+            title={`${source}: ${count}`}
+          />
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {entries.map(([source, count]) => (
+          <div key={source} className="flex items-center gap-2 text-xs">
+            <div
+              className="h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ background: SOURCE_COLORS[source] || "#6b7280" }}
+            />
+            <span className="text-[var(--color-text-muted)] truncate">{source}</span>
+            <span className="ml-auto font-semibold text-[var(--color-text-secondary)]">{count}</span>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+// ============================================
+// Pipeline Stats
+// ============================================
+
+function PipelineStats() {
+  const { state } = useStore();
+  const stats = [
+    { label: "Jobs Found", value: state.jobs.length, icon: Briefcase, color: "indigo", href: "/jobs" },
+    {
+      label: "Applications",
+      value: state.applications.filter((a) => a.status !== "discovered").length,
+      icon: FileText,
+      color: "amber",
+      href: "/applications",
+    },
+    {
+      label: "Interviews",
+      value: state.applications.filter((a) => a.status === "interviewing").length,
+      icon: Target,
+      color: "cyan",
+      href: "/interview",
+    },
+    {
+      label: "Resumes",
+      value: state.resumes.length,
+      icon: FileText,
+      color: "emerald",
+      href: "/resumes",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {stats.map((stat, i) => (
+        <Link key={stat.label} href={stat.href}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05, duration: 0.4 }}
+            className="glass-card p-4 cursor-pointer transition-all hover:border-[var(--color-border-hover)] group"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-${stat.color}-bg)]`}>
+                <stat.icon className={`h-5 w-5 text-[var(--color-${stat.color})]`} />
+              </div>
+              <div>
+                <p className={`text-2xl font-bold text-[var(--color-${stat.color})]`}>{stat.value}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">{stat.label}</p>
+              </div>
+            </div>
+          </motion.div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ============================================
+// Quick Actions
+// ============================================
+
+function QuickActions({
+  onScanNow,
+  scanning,
+}: {
+  onScanNow: () => void;
+  scanning: boolean;
+}) {
+  const [lastCron, setLastCron] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/cron/scan-jobs?manual=true&check=true")
+      .catch(() => {});
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.15, duration: 0.4 }}
+      className="glass-card p-5"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Zap className="h-4 w-4 text-[var(--color-amber)]" />
+        <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Quick Actions</h3>
+      </div>
+
+      <div className="space-y-2">
+        <button
+          onClick={onScanNow}
+          disabled={scanning}
+          className="flex w-full items-center gap-3 rounded-xl border border-[var(--color-border-default)] p-3 transition-all hover:bg-[var(--color-bg-card)] hover:border-[var(--color-border-hover)]"
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--color-indigo)] to-[var(--color-cyan)]">
+            {scanning ? (
+              <Loader2 className="h-4 w-4 animate-spin text-white" />
+            ) : (
+              <Play className="h-4 w-4 text-white" />
+            )}
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+              {scanning ? "Scanning..." : "Scan Now"}
+            </p>
+            <p className="text-[10px] text-[var(--color-text-muted)]">
+              Search all 7 job sources
+            </p>
+          </div>
+        </button>
+
+        <Link href="/jobs">
+          <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border-default)] p-3 transition-all hover:bg-[var(--color-bg-card)] hover:border-[var(--color-border-hover)]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-emerald-bg)]">
+              <Briefcase className="h-4 w-4 text-[var(--color-emerald)]" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">View Jobs</p>
+              <p className="text-[10px] text-[var(--color-text-muted)]">Browse all discoveries</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/resumes">
+          <div className="flex items-center gap-3 rounded-xl border border-[var(--color-border-default)] p-3 transition-all hover:bg-[var(--color-bg-card)] hover:border-[var(--color-border-hover)]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-amber-bg)]">
+              <FileText className="h-4 w-4 text-[var(--color-amber)]" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">My Resumes</p>
+              <p className="text-[10px] text-[var(--color-text-muted)]">View saved resumes</p>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      {/* Cron Status */}
+      <div className="mt-4 flex items-center gap-2 rounded-lg bg-[var(--color-bg-card)] px-3 py-2">
+        <Timer className="h-3 w-3 text-[var(--color-text-muted)]" />
+        <span className="text-[10px] text-[var(--color-text-muted)]">
+          Auto-scan every 6 hours
+        </span>
+        <div className="ml-auto h-2 w-2 rounded-full bg-[var(--color-emerald)] animate-pulse" />
+      </div>
+    </motion.div>
+  );
+}
+
+// ============================================
+// Morning Briefing
 // ============================================
 
 function MorningBriefing() {
@@ -44,7 +279,7 @@ function MorningBriefing() {
       const { data } = await res.json();
       if (data) setBriefing(data);
     } catch (e) {
-      console.error("Briefing refresh error:", e);
+      console.error("Briefing error:", e);
     }
     setLoading(false);
   };
@@ -67,92 +302,43 @@ function MorningBriefing() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="glass-card p-6 relative overflow-hidden"
+      className="glass-card p-5 relative overflow-hidden"
     >
-      {/* Gradient accent */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--color-amber)] via-[var(--color-orange)] to-[var(--color-rose)]" />
-
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-amber-bg)]">
-            <Sparkles className="h-5 w-5 text-[var(--color-amber)]" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-[var(--color-text-primary)]">Morning Briefing</h2>
-            <p className="text-xs text-[var(--color-text-muted)]">
-              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-            </p>
-          </div>
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--color-cyan)] via-[var(--color-indigo)] to-[var(--color-amber)]" />
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-[var(--color-amber)]" />
+          <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Morning Briefing</h3>
         </div>
         <button
           onClick={refresh}
           disabled={loading}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-card)] hover:text-[var(--color-text-primary)]"
+          className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
         >
           {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          Refresh
         </button>
       </div>
 
       {loading && !briefing ? (
-        <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
-          <Loader2 className="h-4 w-4 animate-spin" /> Generating your briefing...
+        <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+          <Loader2 className="h-3 w-3 animate-spin" /> Generating...
         </div>
       ) : briefing ? (
-        <div className="space-y-4">
-          {/* Summary */}
-          <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
-            {briefing.summary || "No briefing available yet."}
+        <div className="space-y-3">
+          <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed">
+            {briefing.summary || "No briefing available."}
           </p>
-
-          {/* Market Insights */}
           {(briefing as any).market_insights?.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {(briefing as any).market_insights.map((insight: string, i: number) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--color-indigo-bg)] px-3 py-1 text-xs text-[var(--color-indigo)]"
-                >
-                  <TrendingUp className="h-3 w-3" /> {insight}
+            <div className="flex flex-wrap gap-1.5">
+              {(briefing as any).market_insights.slice(0, 3).map((insight: string, i: number) => (
+                <span key={i} className="rounded-full bg-[var(--color-indigo-bg)] px-2.5 py-1 text-[10px] text-[var(--color-indigo)]">
+                  <TrendingUp className="inline h-2.5 w-2.5 mr-1" />{insight}
                 </span>
               ))}
             </div>
           )}
-
-          {/* Action Items */}
-          {(briefing as any).action_items?.length > 0 && (
-            <div className="space-y-2">
-              {(briefing as any).action_items.map((item: any, i: number) => (
-                <div
-                  key={i}
-                  className={`flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-[var(--color-bg-card)] ${
-                    item.priority === "high"
-                      ? "border-[var(--color-amber-border)] bg-[var(--color-amber-bg)]/50"
-                      : "border-[var(--color-border-default)]"
-                  }`}
-                >
-                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-                    item.type === "apply" ? "bg-[var(--color-emerald-bg)] text-[var(--color-emerald)]" :
-                    item.type === "prepare" ? "bg-[var(--color-indigo-bg)] text-[var(--color-indigo)]" :
-                    "bg-[var(--color-bg-card)] text-[var(--color-text-muted)]"
-                  }`}>
-                    {item.type === "apply" ? <Rocket className="h-3.5 w-3.5" /> :
-                     item.type === "prepare" ? <FileText className="h-3.5 w-3.5" /> :
-                     <BarChart3 className="h-3.5 w-3.5" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{item.title}</p>
-                    <p className="text-xs text-[var(--color-text-muted)] truncate">{item.description}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-[var(--color-text-muted)] shrink-0" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Encouragement */}
           {briefing.encouragement && (
-            <p className="text-xs text-[var(--color-text-muted)] italic border-l-2 border-[var(--color-indigo)] pl-3">
+            <p className="text-[10px] text-[var(--color-text-muted)] italic border-l-2 border-[var(--color-indigo)] pl-3">
               {briefing.encouragement}
             </p>
           )}
@@ -163,230 +349,12 @@ function MorningBriefing() {
 }
 
 // ============================================
-// Job Match Card
+// Activity Feed
 // ============================================
 
-function JobMatchCard({
-  job,
-  index,
-  onPrepare,
-}: {
-  job: any;
-  index: number;
-  onPrepare: (job: any) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const score = job.scores?.composite || 0;
-  const scoreColor = score >= 90 ? "emerald" : score >= 80 ? "amber" : "rose";
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.1, duration: 0.4 }}
-      className="glass-card group relative overflow-hidden transition-all hover:shadow-lg"
-    >
-      {/* Score indicator line */}
-      <div
-        className={`absolute top-0 left-0 h-full w-1 rounded-l-2xl bg-[var(--color-${scoreColor})]`}
-      />
-
-      <div className="p-5 pl-6">
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-[var(--color-text-primary)] truncate">
-                {job.title}
-              </h3>
-              {job.isFresh && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-emerald-bg)] px-2 py-0.5 text-[10px] font-bold text-[var(--color-emerald)]">
-                  <Zap className="h-2.5 w-2.5" /> NEW
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-[var(--color-text-secondary)]">{job.company}</p>
-            <div className="mt-1 flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="h-3 w-3" /> {job.location || "Remote"}
-              </span>
-              {job.salary && (
-                <span className="text-[var(--color-emerald)]">{job.salary}</span>
-              )}
-              <span>{job.source}</span>
-            </div>
-          </div>
-
-          {/* Score Ring */}
-          <div className="flex flex-col items-center gap-1 ml-4">
-            <div
-              className={`flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-[var(--color-${scoreColor})] bg-[var(--color-${scoreColor}-bg)]`}
-            >
-              <span className={`text-lg font-bold text-[var(--color-${scoreColor})]`}>
-                {score}
-              </span>
-            </div>
-            <span className="text-[10px] text-[var(--color-text-muted)]">Match</span>
-          </div>
-        </div>
-
-        {/* Score Breakdown */}
-        {job.scores && (
-          <div className="mt-3 flex gap-3">
-            {[
-              { label: "Skills", value: job.scores.skills },
-              { label: "Culture", value: job.scores.culture },
-              { label: "Growth", value: job.scores.trajectory },
-            ].map((dim) => (
-              <div key={dim.label} className="flex-1">
-                <div className="flex items-center justify-between text-[10px] text-[var(--color-text-muted)] mb-0.5">
-                  <span>{dim.label}</span>
-                  <span>{dim.value}%</span>
-                </div>
-                <div className="h-1 rounded-full bg-[var(--color-bg-card)]">
-                  <div
-                    className={`h-full rounded-full bg-[var(--color-${dim.value >= 85 ? "emerald" : dim.value >= 70 ? "amber" : "rose"})]`}
-                    style={{ width: `${dim.value}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* AI Reasoning (expandable) */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="mt-3 flex items-center gap-1.5 text-xs text-[var(--color-indigo)] hover:underline"
-        >
-          <Brain className="h-3 w-3" />
-          {expanded ? "Hide" : "Show"} AI Reasoning
-        </button>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className="mt-2 rounded-lg bg-[var(--color-indigo-bg)] border border-[var(--color-indigo-border)] p-3"
-          >
-            <p className="text-xs text-[var(--color-indigo)] leading-relaxed">
-              {job.aiReasoning || job.ai_reasoning || "AI reasoning not available."}
-            </p>
-
-            {/* Hidden Requirements */}
-            {job.hiddenRequirements?.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {job.hiddenRequirements.map((req: any, i: number) => (
-                  <div key={i} className="flex items-start gap-1.5 text-[10px]">
-                    <AlertTriangle className={`h-3 w-3 shrink-0 mt-0.5 ${
-                      req.severity === "critical" ? "text-[var(--color-rose)]" :
-                      req.severity === "warning" ? "text-[var(--color-amber)]" :
-                      "text-[var(--color-text-muted)]"
-                    }`} />
-                    <span className="text-[var(--color-text-secondary)]">
-                      <strong>{req.signal}</strong> — {req.interpretation}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* Quick Actions */}
-        <div className="mt-4 flex items-center gap-2">
-          <button
-            onClick={() => onPrepare(job)}
-            className="flex items-center gap-1.5 rounded-lg bg-[var(--color-indigo)] px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-[var(--color-indigo-hover)]"
-          >
-            <FileText className="h-3 w-3" /> Prepare Materials
-          </button>
-          <Link href="/interview">
-            <button className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border-default)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-card)]">
-              <Target className="h-3 w-3" /> Interview Prep
-            </button>
-          </Link>
-          {job.sourceUrl && (
-            <a
-              href={job.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-            >
-              <ExternalLink className="h-3 w-3" /> View
-            </a>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ============================================
-// Pipeline Stats
-// ============================================
-
-function PipelineStats() {
-  const { state } = useStore();
-
-  const stats = [
-    {
-      label: "Jobs Found",
-      value: state.jobs.length,
-      icon: Briefcase,
-      color: "indigo",
-    },
-    {
-      label: "Applications",
-      value: state.applications.filter((a) => a.status !== "discovered").length,
-      icon: FileText,
-      color: "amber",
-    },
-    {
-      label: "Interviews",
-      value: state.applications.filter((a) => a.status === "interviewing").length,
-      icon: Target,
-      color: "cyan",
-    },
-    {
-      label: "Offers",
-      value: state.applications.filter((a) => a.status === "offered").length,
-      icon: Star,
-      color: "emerald",
-    },
-  ];
-
-  return (
-    <div className="grid grid-cols-4 gap-4">
-      {stats.map((stat, i) => (
-        <motion.div
-          key={stat.label}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.05, duration: 0.4 }}
-          className="glass-card p-4"
-        >
-          <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-${stat.color}-bg)]`}>
-              <stat.icon className={`h-5 w-5 text-[var(--color-${stat.color})]`} />
-            </div>
-            <div>
-              <p className={`text-2xl font-bold text-[var(--color-${stat.color})]`}>{stat.value}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">{stat.label}</p>
-            </div>
-          </div>
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-// ============================================
-// Agent Activity Feed
-// ============================================
-
-function AgentActivityFeed() {
+function ActivityFeed() {
   const { state } = useStore();
   const events = state.agentEvents.slice(-5);
-
   if (events.length === 0) return null;
 
   return (
@@ -397,11 +365,11 @@ function AgentActivityFeed() {
       className="glass-card p-5"
     >
       <div className="flex items-center gap-2 mb-3">
-        <Zap className="h-4 w-4 text-[var(--color-amber)]" />
-        <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Agent Activity</h3>
+        <Activity className="h-4 w-4 text-[var(--color-amber)]" />
+        <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Agent Activity</h3>
         {state.agentRunning && (
           <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-emerald-bg)] px-2 py-0.5 text-[10px] font-bold text-[var(--color-emerald)]">
-            <Loader2 className="h-2.5 w-2.5 animate-spin" /> Running
+            <Loader2 className="h-2.5 w-2.5 animate-spin" /> Live
           </span>
         )}
       </div>
@@ -421,6 +389,82 @@ function AgentActivityFeed() {
 }
 
 // ============================================
+// Top Matches Card
+// ============================================
+
+function TopMatchCard({
+  job,
+  index,
+  onMail,
+  onResume,
+}: {
+  job: any;
+  index: number;
+  onMail: (j: any) => void;
+  onResume: (j: any) => void;
+}) {
+  const score = job.scores?.composite || 0;
+  const scoreColor = score >= 85 ? "emerald" : score >= 70 ? "amber" : "rose";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, duration: 0.35 }}
+      className="glass-card group p-4 transition-all hover:border-[var(--color-border-hover)]"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            {job.isFresh && (
+              <span className="rounded-full bg-[var(--color-emerald-bg)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--color-emerald)]">
+                NEW
+              </span>
+            )}
+            <span className="text-[10px] text-[var(--color-text-muted)]">{job.source}</span>
+          </div>
+          <h4 className="text-sm font-bold text-[var(--color-text-primary)] line-clamp-1">{job.title}</h4>
+          <p className="text-xs text-[var(--color-text-secondary)]">{job.company}</p>
+          <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+            <span><MapPin className="inline h-2.5 w-2.5" /> {job.location || "Remote"}</span>
+            {job.salary && <span className="text-[var(--color-emerald)]">{job.salary}</span>}
+          </div>
+        </div>
+        <div className={`flex h-12 w-12 items-center justify-center rounded-full border-2 border-[var(--color-${scoreColor})] bg-[var(--color-${scoreColor}-bg)] shrink-0`}>
+          <span className={`text-sm font-bold text-[var(--color-${scoreColor})]`}>{score}</span>
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="mt-3 flex items-center gap-1.5">
+        <button
+          onClick={() => onMail(job)}
+          className="flex items-center gap-1 rounded-lg bg-[var(--color-cyan-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--color-cyan)]"
+        >
+          <Mail className="h-2.5 w-2.5" /> Mail
+        </button>
+        <button
+          onClick={() => onResume(job)}
+          className="flex items-center gap-1 rounded-lg bg-[var(--color-emerald-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--color-emerald)]"
+        >
+          <FileText className="h-2.5 w-2.5" /> Resume
+        </button>
+        <Link href={`/interview?jobId=${job.id}&jobTitle=${encodeURIComponent(job.title)}&jobCompany=${encodeURIComponent(job.company)}`}>
+          <span className="flex items-center gap-1 rounded-lg bg-[var(--color-indigo-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--color-indigo)]">
+            <Target className="h-2.5 w-2.5" /> Prep
+          </span>
+        </Link>
+        <Link href={`/jobs/${job.id}`} className="ml-auto">
+          <span className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">
+            Details →
+          </span>
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
+// ============================================
 // Main Dashboard Page
 // ============================================
 
@@ -430,7 +474,10 @@ export default function DashboardPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
 
-  // Sort jobs by composite score (descending)
+  // Modal state
+  const [mailJob, setMailJob] = useState<any>(null);
+  const [resumeJob, setResumeJob] = useState<any>(null);
+
   const topJobs = [...state.jobs]
     .filter((j) => j.scores?.composite)
     .sort((a, b) => (b.scores?.composite || 0) - (a.scores?.composite || 0))
@@ -443,7 +490,13 @@ export default function DashboardPage() {
     setAgentError(null);
 
     try {
-      addAgentEvent({ id: `evt-${Date.now()}-1`, agent: "scout", status: "running", message: "Scanning job boards...", timestamp: new Date().toISOString() });
+      addAgentEvent({
+        id: `evt-${Date.now()}-1`,
+        agent: "scout",
+        status: "running",
+        message: "Scanning 7 job sources...",
+        timestamp: new Date().toISOString(),
+      });
 
       const res = await fetch("/api/agents/run", {
         method: "POST",
@@ -454,7 +507,10 @@ export default function DashboardPage() {
             id: state.user?.id || "demo",
             email: state.user?.email || "demo@example.com",
             name: state.user?.name || "User",
-            skills: (state.user?.skills || []).map((s: any) => ({ name: s.name, level: s.level || "intermediate" })),
+            skills: (state.user?.skills || []).map((s: any) => ({
+              name: s.name,
+              level: s.level || "intermediate",
+            })),
             experience: [],
             preferences: {
               targetRoles: ["Software Engineer", "Full Stack Developer"],
@@ -469,23 +525,26 @@ export default function DashboardPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        const message = data?.error || "Failed to run agents.";
-        setAgentError(message);
-        addAgentEvent({
-          id: `evt-${Date.now()}-err`,
-          agent: "scout",
-          status: "failed",
-          message,
-          timestamp: new Date().toISOString(),
-        });
+        setAgentError(data?.error || "Failed to run agents.");
         return;
       }
 
-      addAgentEvent({ id: `evt-${Date.now()}-2`, agent: "scout", status: "completed", message: `Found ${data.jobsFound || 0} opportunities`, timestamp: new Date().toISOString() });
-      addAgentEvent({ id: `evt-${Date.now()}-3`, agent: "analyzer", status: "completed", message: `Scored ${data.scoredJobs?.length || 0} matches`, timestamp: new Date().toISOString() });
+      addAgentEvent({
+        id: `evt-${Date.now()}-2`,
+        agent: "scout",
+        status: "completed",
+        message: `Found ${data.jobsFound || 0} jobs from all sources`,
+        timestamp: new Date().toISOString(),
+      });
+      addAgentEvent({
+        id: `evt-${Date.now()}-3`,
+        agent: "analyzer",
+        status: "completed",
+        message: `Scored ${data.scoredJobs?.length || 0} matches`,
+        timestamp: new Date().toISOString(),
+      });
 
       if (data.scoredJobs?.length) {
-        // Transform and save to store
         const transformed = data.scoredJobs.map((j: any) => ({
           id: j.id,
           title: j.title,
@@ -505,38 +564,20 @@ export default function DashboardPage() {
         }));
         setJobs(transformed);
 
-        // Save to backend
         try {
           await fetch("/api/jobs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ jobs: transformed }),
           });
-        } catch (e) {
-          console.error("Failed to persist jobs:", e);
-        }
+        } catch {}
       }
-    } catch (error) {
+    } catch {
       setAgentError("Agent run failed. Please try again.");
-      addAgentEvent({ id: `evt-${Date.now()}-err`, agent: "scout", status: "failed", message: "Agent run failed.", timestamp: new Date().toISOString() });
     } finally {
       setIsRunning(false);
       setAgentRunning(false);
     }
-  };
-
-  const handlePrepare = async (job: any) => {
-    // Create application entry
-    try {
-      await fetch("/api/applications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId: job.id, status: "discovered" }),
-      });
-    } catch (e) {}
-
-    // Navigate to resumes page (or trigger inline)
-    window.location.href = `/resumes?jobId=${job.id}&jobTitle=${encodeURIComponent(job.title)}&jobCompany=${encodeURIComponent(job.company)}`;
   };
 
   return (
@@ -558,7 +599,7 @@ export default function DashboardPage() {
         >
           {isRunning ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Agents Running...
+              <Loader2 className="h-4 w-4 animate-spin" /> Scanning...
             </>
           ) : (
             <>
@@ -569,28 +610,32 @@ export default function DashboardPage() {
       </div>
 
       {agentError && (
-        <div className="rounded-lg border border-[var(--color-rose)]/30 bg-[var(--color-rose-bg)] px-4 py-3 text-sm text-[var(--color-rose)]">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {agentError}
         </div>
       )}
 
-      {/* Pipeline Stats */}
+      {/* Stats */}
       <PipelineStats />
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* Left - Briefing + Activity */}
-        <div className="col-span-1 space-y-6">
-          <MorningBriefing />
-          <AgentActivityFeed />
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column */}
+        <div className="space-y-6">
+          <QuickActions onScanNow={handleRunAgents} scanning={isRunning} />
+          <SourceDistribution />
+          <ActivityFeed />
         </div>
 
-        {/* Right - Top Matches */}
-        <div className="col-span-2 space-y-4">
+        {/* Right Column — Top Matches */}
+        <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-[var(--color-text-primary)]">
-              Top Matches
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-[var(--color-text-primary)]">Top Matches</h2>
+              <span className="rounded-full bg-[var(--color-emerald-bg)] px-2 py-0.5 text-[10px] font-bold text-[var(--color-emerald)]">
+                {topJobs.filter((j) => (j.scores?.composite || 0) >= 80).length} high
+              </span>
+            </div>
             <Link
               href="/jobs"
               className="flex items-center gap-1 text-sm text-[var(--color-indigo)] hover:underline"
@@ -599,30 +644,54 @@ export default function DashboardPage() {
             </Link>
           </div>
 
+          <MorningBriefing />
+
           {topJobs.length === 0 ? (
-            <div className="glass-card p-8 text-center">
+            <div className="glass-card p-10 text-center">
               <Briefcase className="mx-auto h-10 w-10 text-[var(--color-text-muted)] mb-3" />
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
                 No jobs discovered yet
               </h3>
               <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                Click &ldquo;Run AI Agents&rdquo; to start discovering opportunities
+                Click &ldquo;Run AI Agents&rdquo; to scan all job sources
               </p>
             </div>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-3 md:grid-cols-2">
               {topJobs.map((job, i) => (
-                <JobMatchCard
+                <TopMatchCard
                   key={job.id}
                   job={job}
                   index={i}
-                  onPrepare={handlePrepare}
+                  onMail={setMailJob}
+                  onResume={setResumeJob}
                 />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Modals */}
+      {mailJob && (
+        <ComposeMailModal
+          isOpen={!!mailJob}
+          onClose={() => setMailJob(null)}
+          job={mailJob}
+          userName={state.user?.name}
+          userSkills={state.user?.skills?.map((s: any) => s.name)}
+        />
+      )}
+      {resumeJob && (
+        <ResumeBuilderModal
+          isOpen={!!resumeJob}
+          onClose={() => setResumeJob(null)}
+          job={resumeJob}
+          userName={state.user?.name}
+          userEmail={state.user?.email}
+          userSkills={state.user?.skills?.map((s: any) => s.name)}
+        />
+      )}
     </div>
   );
 }

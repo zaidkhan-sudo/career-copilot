@@ -76,7 +76,7 @@ export async function analyzeOutcomes(
   const emit = (message: string, status: AgentEvent["status"] = "running", metadata?: Record<string, unknown>) => {
     onEvent?.({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      agent: "evolution",
+      agent: "reporter",
       message,
       status,
       timestamp: new Date().toISOString(),

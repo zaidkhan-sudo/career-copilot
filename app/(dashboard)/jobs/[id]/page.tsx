@@ -294,7 +294,7 @@ export default function JobDetailPage() {
                     <Download className="h-4 w-4" /> Download PDF
                   </button>
                   <a
-                    href={job.applyUrl}
+                    href={job.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 rounded-lg bg-[var(--color-indigo)] px-4 py-2 text-sm font-semibold text-white"

@@ -35,21 +35,34 @@ export async function POST(request: NextRequest) {
     const profile = await getProfile(user.uid);
     const p = profile as Record<string, unknown> | null;
     const rawSkills = Array.isArray(p?.skills) ? (p?.skills as unknown[]) : [];
+    const validLevels = ["beginner", "intermediate", "advanced", "expert"] as const;
+    type SkillLevel = typeof validLevels[number];
     const skills = rawSkills
       .map((s) => {
         if (typeof s === "string") {
-          return { name: s, level: "intermediate" };
+          return { name: s, level: "intermediate" as SkillLevel };
         }
         const skill = s as { name?: string; level?: string };
         if (!skill.name) return null;
-        return { name: skill.name, level: skill.level || "intermediate" };
+        const level = validLevels.includes(skill.level as SkillLevel)
+          ? (skill.level as SkillLevel)
+          : ("intermediate" as SkillLevel);
+        return { name: skill.name, level };
       })
       .filter(
-        (s): s is { name: string; level: string } => s !== null
+        (s): s is { name: string; level: SkillLevel } => s !== null
       );
-    const experience = Array.isArray(p?.experience)
+    const experience = (Array.isArray(p?.experience)
       ? (p?.experience as Record<string, unknown>[])
-      : [];
+      : []
+    ).map((e) => ({
+      company: (e.company as string) || "",
+      title: (e.title as string) || "",
+      startDate: (e.startDate as string) || "",
+      endDate: (e.endDate as string) || "",
+      description: (e.description as string) || "",
+      skillsUsed: Array.isArray(e.skillsUsed) ? (e.skillsUsed as string[]) : [],
+    }));
     const preferences = (p?.preferences || {}) as Record<string, unknown>;
 
     // Build agent state for the writer
@@ -63,7 +76,9 @@ export async function POST(request: NextRequest) {
         targetRoles: Array.isArray(preferences.targetRoles)
           ? preferences.targetRoles
           : (p?.title ? [p.title as string] : []),
-        workMode: (preferences.workMode as string) || "",
+        workMode: (["remote", "hybrid", "onsite", "any"].includes(preferences.workMode as string)
+          ? preferences.workMode as "remote" | "hybrid" | "onsite" | "any"
+          : "any"),
         locations: Array.isArray(preferences.locations)
           ? preferences.locations
           : [],
@@ -93,13 +108,15 @@ export async function POST(request: NextRequest) {
 
     // Run writer agent
     const agentState = {
-      user: userProfile,
+      userId: user.uid,
+      userProfile,
       discoveredJobs: [],
       scoredJobs: [targetJob],
       generatedResumes: [],
-      interviewPrep: undefined,
       events: [],
       currentAgent: "writer" as const,
+      dailyDigest: null,
+      error: null,
     };
 
     const result = await writerAgent(agentState);
@@ -116,7 +133,7 @@ export async function POST(request: NextRequest) {
     const resumeRecord = {
       job_id: jobId || null,
       framing_strategy: generated.framingStrategy || "general",
-      content: generated.resumeMarkdown || generated.content || "",
+      content: generated.content || "",
       cover_letter: generated.coverLetter || "",
       status: "draft",
     };

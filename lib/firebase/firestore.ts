@@ -5,14 +5,9 @@
  * Uses Firebase Admin Firestore (server-side).
  *
  * Collections:
- * - profiles
- * - jobs
- * - applications
- * - resume_variants
- * - interview_sessions
- * - outcomes
- * - briefings
- * - agent_runs
+ * - profiles, jobs, applications, resume_variants
+ * - interview_sessions, outcomes, briefings, agent_runs
+ * - sent_mails, interview_prep, cron_runs
  */
 
 import { adminDb } from "./admin";
@@ -54,6 +49,12 @@ export async function getJobs(userId: string) {
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
+export async function getJobById(jobId: string) {
+  const doc = await adminDb.collection("jobs").doc(jobId).get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...doc.data() };
+}
+
 export async function upsertJobs(
   userId: string,
   jobs: Record<string, unknown>[]
@@ -71,11 +72,20 @@ export async function upsertJobs(
       discovered_at: job.discovered_at || FieldValue.serverTimestamp(),
     };
     batch.set(ref, data, { merge: true });
-    results.push({ id, ...data });
+    results.push(data);
   }
 
   await batch.commit();
   return results;
+}
+
+export async function getJobExternalIds(userId: string): Promise<Set<string>> {
+  const snapshot = await adminDb
+    .collection("jobs")
+    .where("user_id", "==", userId)
+    .select("id")
+    .get();
+  return new Set(snapshot.docs.map((doc) => doc.id));
 }
 
 // ============================================
@@ -91,7 +101,6 @@ export async function getApplications(userId: string) {
 
   const apps = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-  // Attach job data
   for (const app of apps) {
     const jobId = (app as Record<string, unknown>).job_id as string;
     if (jobId) {
@@ -152,7 +161,6 @@ export async function getResumes(userId: string) {
 
   const resumes = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-  // Attach job info
   for (const resume of resumes) {
     const jobId = (resume as Record<string, unknown>).job_id as string;
     if (jobId) {
@@ -168,6 +176,12 @@ export async function getResumes(userId: string) {
   }
 
   return resumes;
+}
+
+export async function getResumeById(resumeId: string) {
+  const doc = await adminDb.collection("resume_variants").doc(resumeId).get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...doc.data() };
 }
 
 export async function upsertResume(
@@ -217,6 +231,114 @@ export async function upsertInterviewSession(
   };
   await ref.set(data, { merge: true });
   const doc = await ref.get();
+  return { id: doc.id, ...doc.data() };
+}
+
+// ============================================
+// Interview Prep Materials
+// ============================================
+
+export async function getInterviewPreps(userId: string) {
+  const snapshot = await adminDb
+    .collection("interview_prep")
+    .where("user_id", "==", userId)
+    .orderBy("created_at", "desc")
+    .get();
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function getInterviewPrepByJobId(userId: string, jobId: string) {
+  const snapshot = await adminDb
+    .collection("interview_prep")
+    .where("user_id", "==", userId)
+    .where("job_id", "==", jobId)
+    .limit(1)
+    .get();
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+export async function upsertInterviewPrep(
+  userId: string,
+  prep: Record<string, unknown>
+) {
+  const id =
+    (prep.id as string) || adminDb.collection("interview_prep").doc().id;
+  const ref = adminDb.collection("interview_prep").doc(id);
+  const data = {
+    ...prep,
+    id,
+    user_id: userId,
+    created_at: prep.created_at || FieldValue.serverTimestamp(),
+  };
+  await ref.set(data, { merge: true });
+  const doc = await ref.get();
+  return { id: doc.id, ...doc.data() };
+}
+
+// ============================================
+// Sent Mails
+// ============================================
+
+export async function getSentMails(userId: string) {
+  const snapshot = await adminDb
+    .collection("sent_mails")
+    .where("user_id", "==", userId)
+    .orderBy("sent_at", "desc")
+    .get();
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function createSentMail(
+  userId: string,
+  mail: Record<string, unknown>
+) {
+  const ref = adminDb.collection("sent_mails").doc();
+  const data = {
+    ...mail,
+    user_id: userId,
+    sent_at: FieldValue.serverTimestamp(),
+  };
+  await ref.set(data);
+  return { id: ref.id, ...data };
+}
+
+// ============================================
+// Cron Runs
+// ============================================
+
+export async function createCronRun(runData: Record<string, unknown>) {
+  const ref = adminDb.collection("cron_runs").doc();
+  const data = {
+    ...runData,
+    started_at: FieldValue.serverTimestamp(),
+  };
+  await ref.set(data);
+  return { id: ref.id, ...data };
+}
+
+export async function completeCronRun(
+  runId: string,
+  result: Record<string, unknown>
+) {
+  const ref = adminDb.collection("cron_runs").doc(runId);
+  const status = (result as { status?: string }).status ?? "completed";
+  await ref.update({
+    ...result,
+    completed_at: FieldValue.serverTimestamp(),
+    status,
+  });
+}
+
+export async function getLastCronRun() {
+  const snapshot = await adminDb
+    .collection("cron_runs")
+    .orderBy("started_at", "desc")
+    .limit(1)
+    .get();
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
   return { id: doc.id, ...doc.data() };
 }
 
@@ -309,4 +431,13 @@ export async function completeAgentRun(
   await ref.update(updates);
   const doc = await ref.get();
   return { id: doc.id, ...doc.data() };
+}
+
+// ============================================
+// All Users (for cron)
+// ============================================
+
+export async function getAllUserProfiles() {
+  const snapshot = await adminDb.collection("profiles").get();
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }

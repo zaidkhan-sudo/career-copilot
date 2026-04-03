@@ -102,7 +102,12 @@ export const Component = () => {
       createNebula();
       createMountains();
       createAtmosphere();
-      getLocation();
+      // Store mountain locations
+      const locations: number[] = [];
+      refs.mountains.forEach((mountain, i) => {
+        locations[i] = mountain.position.z;
+      });
+      refs.locations = locations;
 
       // Start animation
       animate();
@@ -445,14 +450,7 @@ export const Component = () => {
     };
   }, []);
 
-  const getLocation = () => {
-    const { current: refs } = threeRefs;
-    const locations: number[] = [];
-    refs.mountains.forEach((mountain, i) => {
-      locations[i] = mountain.position.z;
-    });
-    refs.locations = locations;
-  };
+
 
   // GSAP Animations
   useEffect(() => {

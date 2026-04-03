@@ -19,14 +19,12 @@ export async function GET(request: NextRequest) {
       return {
         id: r.id,
         jobId: r.job_id,
-        jobTitle: jobs?.title || "",
-        jobCompany: jobs?.company || "",
+        jobTitle: r.job_title || jobs?.title || "",
+        jobCompany: r.job_company || jobs?.company || "",
         framingStrategy: r.framing_strategy,
         content: r.content,
         coverLetter: r.cover_letter,
         status: r.status,
-        callbackCount: r.callback_count,
-        totalSent: r.total_sent,
         createdAt: r.created_at,
       };
     });

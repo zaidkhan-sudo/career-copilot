@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateInterviewPrep, evaluateBehavioralAnswer } from "@/lib/agents";
 import { verifyFirebaseToken } from "@/lib/firebase/verify-token";
-import { getInterviewSessions } from "@/lib/firebase/firestore";
+import { getInterviewSessions, getInterviewPreps } from "@/lib/firebase/firestore";
 
 export const maxDuration = 30;
 
@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
     }
 
     const sessions = await getInterviewSessions(user.uid);
-    return NextResponse.json({ success: true, data: sessions });
+    const preps = await getInterviewPreps(user.uid);
+    return NextResponse.json({ success: true, data: [...preps, ...sessions] });
   } catch {
     return NextResponse.json(
       { success: false, error: "Failed to load interview sessions" },
