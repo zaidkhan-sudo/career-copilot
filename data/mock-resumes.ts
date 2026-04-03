@@ -1,0 +1,42 @@
+import type { ResumeVariant } from "@/types/resume";
+
+export const mockResumes: ResumeVariant[] = [
+  {
+    id: "r1",
+    variantTag: "backend-heavy-v3",
+    framingStrategy: "Backend-Heavy",
+    targetCompany: "Stripe",
+    targetRole: "Senior Backend Engineer",
+    callbackCount: 4,
+    totalSent: 12,
+    callbackRate: 33,
+    companyNewsUsed: "Stripe's $1B ARR milestone (Mar 2026)",
+    createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    status: "ready",
+  },
+  {
+    id: "r2",
+    variantTag: "fullstack-v2",
+    framingStrategy: "Full-Stack",
+    targetCompany: "Vercel",
+    targetRole: "Full-Stack Developer",
+    callbackCount: 3,
+    totalSent: 17,
+    callbackRate: 18,
+    companyNewsUsed: "Vercel's Next.js 15 launch",
+    createdAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+    status: "applied",
+  },
+  {
+    id: "r3",
+    variantTag: "impact-first-v1",
+    framingStrategy: "Impact-First",
+    targetCompany: "Notion",
+    targetRole: "Software Engineer",
+    callbackCount: 2,
+    totalSent: 9,
+    callbackRate: 22,
+    createdAt: new Date(Date.now() - 5 * 86400 * 1000).toISOString(),
+    status: "applied",
+  },
+];
